@@ -16,14 +16,25 @@ import ipywidgets_runner as wr
 first_name_widget = w.Text()
 last_name_widget = w.Text()
 age_widget = w.Date()
+output_widget = w.Output()
 
 full_name_node = wr.Node(
   in=[first_name_widget, last_name_widget],
   f=lambda x, y: x+y
 )
   
-b = wr.Node(
-  in=[a, age_widget],
+name_and_time_node = wr.Node(
+  in=[full_name_node, age_widget],
   f=lambda x, y: x + str(datetime.now()-y)
 )
+
+output_node = wr.OutNode(
+  in=[name_and_time_node],
+  f=lambda x: plot(x),
+  out=output_widget
+)
+
+container_widget = w.VBox([first_name_widget, last_name_widget, age_widget, output_widget])
+
+wr.start(container_widget)
 ```
