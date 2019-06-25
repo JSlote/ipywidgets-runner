@@ -1,37 +1,33 @@
 # todo: add kwargs to nodes
 # remove need for global
-# multiprocessing might need a multiprocessing.queue, rather than just a list.
-#   problem is, I'm not sure the m.queue allows us to peak OR edit. So we'll have to figure something out.
-#   in fact, multiprocessing may not work at all.
+# right now the worker owns the stale_node_queue. Is that correct?
 
-# Players in our play tonight:
+# Players in our show tonight:
+#
 # DAG composed of nodes
 # stale_node_queue kept in line thanks to a linear extension (a.k.a. topological sort)
-# worker process
+# worker process consuming from the queue
 
-# a node is stale if we no longer are sure its output corresponds to its input
+# a node is stale if we no longer are sure its output corresponds to its input (though it might if f is not injective)
 # a node is potentially stale if it has an ancestor which is stale
-
-# Notes about the worker
-# on the one hand, threads allow us to share unpicklable stuff
-# on the other hand, threads can't be killed safely
-# on one foot, processes (from multiprocessing) can be safely killed
-# on the other foot, processes can't share info easily
-# Solution: use multiprocessing in a thread
-# Thread is born when queue goes from length 0 to length > 0
-# Thread dies when queue goes back to length 0
-# Each f is run in a different process
-# Return values are handled in thread 
-
 
 import ipywidgets as w
 from multiprocessing import Pool, TimeoutError
-from threading import Thread
+import threading as th
+
+def pp_queue(queue):
+    out = ""
+    if queue:
+        for el in queue:
+            out += " - "+str(id(el))+"\n"
+    return out[:-2]
+
+the_output = w.Output()
 
 def start(widget):
-    display(widget)
-
-stale_node_queue = []
+    global the_output
+    total = w.HBox([widget, the_output])
+    display(total)
 
 class Output:
     """
@@ -45,144 +41,173 @@ class Worker:
     """
     Worker manager.
 
-    Runs in a separate thread and spawns subprocesses for each node computation
+    Runs a thread that spawns subprocesses (well, pools) for each node computation.
+    Can be interrupted.
     """
-    def __init__(self, stale_node_queue):
-        self.stale_node_queue = stale_node_queue
-        self.thread = Thread(target=self.run_thread)
+    def __init__(self):
+        self.stale_node_queue = []
+        self.consumer_thread = th.Thread(target=self.consume)
+        self.queue_condition = th.Condition()
         self.singleton_pool = None
-        self.interrupt = False
+        self.interrupted = False
+        self.curr_node = None # to hold the current node being worked on
 
-    def run_thread(self):
-        while self.stale_node_queue:
-            # peek at the next node in the queue
-            node = self.stale_node_queue[0]
+        self.consumer_thread.start()
 
-            # let everyone know we're workin on it
-            if node.out:
-                node.out.layout = w.Layout(border="dashed green 3px")
+
+    def consume(self):
+        global the_output
+        with the_output:
+            print("Thread running", flush=True)
+        while True:
+            with the_output:
+                print("\nTop of the loop.\nAttempting consume; queue:\n", pp_queue(self.stale_node_queue), flush=True)
+
+            # acquire the lock, grab a thingy when possible
+            with self.queue_condition:
+                while not self.stale_node_queue:
+
+                    with the_output:
+                        print("Waiting for something to be in the queue", flush=True)
+
+                    self.queue_condition.wait()
+
+                    with the_output:
+                        print("\n\nI'm told there's something in the queue", flush=True)
+
+                with the_output:
+                    print("Consuming from the queue:\n", pp_queue (self.stale_node_queue), flush=True)
+
+                self.curr_node = self.stale_node_queue.pop(0)
+
+            # lock released
+
+            # display that we're working on it
+            if self.curr_node.out:
+                self.curr_node.out.layout = w.Layout(border="dashed green 3px")
 
             # assemble the function args
-            args = []
+            # args = []
 
-            for arg_obj in node.args:
-                # just for clarity's sake. not necessary
-                if isinstance(arg_obj, w.DOMWidget):
-                    args.append(arg_obj.value)
-                elif isinstance(arg_obj, Node):
-                    args.append(arg_obj.value)
+            # for arg_obj in self.curr_node.args:
+            #     # just for clarity's sake. not necessary
+            #     if isinstance(arg_obj, w.DOMWidget):
+            #         args.append(arg_obj.value)
+            #     elif isinstance(arg_obj, Node):
+            #         args.append(arg_obj.value)
+
+            args = [arg.value for arg in self.curr_node.args]
 
             # start off a mini pool to run our f
             # and make it easy to get the result
             self.singleton_pool = Pool(processes=1)
-            f_result = self.singleton_pool.apply_async(node.f, args)
+            f_pending_return_value = self.singleton_pool.apply_async(self.curr_node.f, args)
             self.singleton_pool.close()
 
             # jump between waiting for the result and checking whether
             # we're supposed to cancel
             #  - if we're supposed to cancel, kill the worker, end the pool, etc.
             #  - otherwise, update everything as necessary
+            with the_output:
+                print("\nRunning node", self.curr_node, flush=True)
 
-            done = False
-            while not done:
+            f_return_value = None
+            while not f_return_value:
                 try:
-                    output = f_result.get(timeout=0.1) # assume seconds?
+                    f_return_value = f_pending_return_value.get(timeout=0.1) # assume seconds?
                     # todo: might be able to terminate from main thread instead
                     # meaning we'd have to deal with this part differently
-                except TimeoutError:
+                except TimeoutError: # this is ok, just haven't finished yet
                     pass
-                else:
-                    done = True
-                if self.interrupt:
-                    # print("BAILIN'", flush=True)
-                    self.singleton_pool.terminate()
-                    self.singleton_pool.join()
-                    self.interrupt = False
-                    return # bail
+                # else:
+                #     break # we got our output!
+
+                if self.interrupted:
+                    with the_output:
+                        print("INTERRUPTED!", flush=True)
+                    break
+
+            if self.interrupted:
+                # reset our interrupted flag
+                self.interrupted = False
+                # no more current node
+                self.curr_node = None
+                # terminate our pool
+                self.singleton_pool.terminate()
+                # join it to make sure it ded
+                self.singleton_pool.join()
+                continue
+
+            with the_output:
+                print("got output", f_return_value, "\n", flush=True)
 
             # handle outputs
-            if isinstance(output, Output):
-                display = output.display
-                value = output.value
+            if isinstance(f_return_value, Output):
+                display = f_return_value.display
+                value = f_return_value.value
             else:
-                display = output
-                value = output
+                display = f_return_value
+                value = f_return_value
 
-            # update the value for the node
-            node.value = value
+            # update the value for the self.curr_node
+            self.curr_node.value = value
 
             # if we're supposed to be writing to an output widget
-            if node.out:
-                node.out.clear_output()
+            if self.curr_node.out:
+                self.curr_node.out.layout = w.Layout(border="solid 3px rgba(0,0,0,0)")
+                self.curr_node.out.clear_output()
+
                 if isinstance(display, str):
-                    node.out.append_stdout(display)
+                    self.curr_node.out.append_stdout(display)
                 else:
                     try:
-                        node.out.append_display_data(display)
+                        self.curr_node.out.append_display_data(display)
                     except Exception as e:
                         # print("Display exception for that output!", e, flush=True)
-                        node.out.append_stdout(display)
+                        self.curr_node.out.append_stdout(display)
 
-                node.out.layout = w.Layout(border="none")
-
-            self.stale_node_queue.pop(0)
-            # print("Queue:", self.stale_node_queue, " - end of running a node", flush=True)
+            self.curr_node = None
 
         # if we get here, we've run through everything in the queue
 
-    def stop(self):
-        self.interrupt = True
+
+    def interrupt(self):
+        self.interrupted = True
         if self.singleton_pool:
             self.singleton_pool.join()
 
-    def start(self):
-        # if the thread is waiting to start
-        # start it
-        # otherwise make a new thread
-
-        try:
-            self.thread.start()
-            # print("start success", flush=True)
-        except RuntimeError: # it's not initial, it lived and died
-            self.thread = Thread(target=self.run_thread)
-            self.thread.start()
-            # print("had to make a new one, but started successfully", flush=True)
-
-worker = Worker(stale_node_queue)
+worker = Worker()
 
 def handle_widget_change(change):
     widget = change.owner
-    # print("Updating dag", flush=True)
     # determine list of nodes to update by subsetting linear extension
     direct_descendants = set(widget_descendants[id(widget)])
+
     new_stale_nodes = direct_descendants.union(all_descendants(direct_descendants))
     new_stale_nodes_sorted = [node for node in linear_extension if node in new_stale_nodes]
 
+    # show outputs as stale
     for node in new_stale_nodes:
         if node.out:
-            node.out.layout = w.Layout(border="dashed red 3px")
+            node.out.layout = w.Layout(border="dashed gray 3px")
 
-    global stale_node_queue
+    # grab the queue lock
+    with worker.queue_condition:
+        # interrupt the worker if its working on a stale node
+        if worker.curr_node in new_stale_nodes:
+            worker.interrupt()
+        # because we've acquired the queue lock, the worker won't be able to
+        # do anything until we release the lock. So we're free to make our modifications in peace
 
-    # interrupt the worker if its workin on a stale node
-    if len(stale_node_queue) and stale_node_queue[0] in new_stale_nodes:
-        worker.stop()
+        # remove any stale nodes from the node queue: we need to start the waterfall
+        # with the new data
+        worker.stale_node_queue = [node for node in worker.stale_node_queue if node not in new_stale_nodes]
 
-    # remove any stale nodes from the node queue: we need to start the waterfall
-    # with the new data
-    for i, node in enumerate(stale_node_queue):
-        if node in new_stale_nodes:
-            stale_node_queue.pop(i)
+        # put all stale nodes onto the end of the queue
+        worker.stale_node_queue += new_stale_nodes_sorted
 
-    # put all stale nodes onto the end of the queue
-    # stale_node_queue += new_stale_nodes_sorted
-    stale_node_queue += new_stale_nodes_sorted
-
-
-    # print("Queue:", stale_node_queue, " - end of handler", flush=True)
-
-    # start the worker thread again if its stopped
-    worker.start()
+        # let the worker know we're done
+        worker.queue_condition.notify()
 
 linear_extension = []
 widget_descendants = {}
@@ -218,6 +243,7 @@ class Node:
 
         if out:
             assert isinstance(out, w.widgets.widget_output.Output)
+            out.layout = w.Layout(border="solid 3px rgba(0,0,0,0)")
         self.out = out
 
         self.ancestors = set()
