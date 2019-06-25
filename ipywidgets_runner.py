@@ -1,5 +1,8 @@
 # todo: add kwargs to nodes
 # remove need for global
+# multiprocessing might need a multiprocessing.queue, rather than just a list.
+#   problem is, I'm not sure the m.queue allows us to peak OR edit. So we'll have to figure something out.
+#   in fact, multiprocessing may not work at all.
 
 import ipywidgets as w
 from multiprocessing import Process
@@ -31,7 +34,8 @@ class Worker:
     Class to manage the worker thread
     """
     def __init__(self, work_queue):
-        self.process = Process(target=self.worker_process, args=(work_queue,))
+        self.work_queue = work_queue
+        self.process = Process(target=self.worker_process, args=(self.work_queue,))
 
     def stop(self):
         self.process.terminate()
@@ -39,13 +43,17 @@ class Worker:
     def start(self):
         try:
             self.process.start()
+            print("start success")
         except AssertionError: # it's not initial, it lived and died
-            self.process = Process(target=self.worker_process, args=(work_queue,))
+            self.process = Process(target=self.worker_process, args=(self.work_queue,))
             self.process.start()
+            print("had to make a new one, but started successfully")
 
     def worker_process(self, work_queue):
         while work_queue:
+            print("there's something on the queue")
             self._run_node(work_queue[0])
+            print("finished the first thing")
             work_queue.pop(0)
 
     def _run_node(self, node):
