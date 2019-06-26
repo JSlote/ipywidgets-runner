@@ -1,5 +1,26 @@
 # ipywidgets-runner
-A framework for intelligently and asynchronously scheduling ipywidgets re-renders
+### Supercharge your ipywidgets dashboards and apps in Jupyter
+
+`ipywidgets-runner` is a framework for writing ipywidget apps that include long-running computations, such as database queries or complicated statistical analyses.
+When a widget value is changes, `ipywidgets-runner` intelligently schedules partial recomputations to greatly speed up tool performance.
+
+With `ipywidgets-runner` an analysis is split up into functional components (nodes), each which depend on various widget values.
+When a widget value is update, `ipywidgets-runner` will intelligently recompute only the portion of the analysis that truly depends on that parameter.
+
+It's very easy to integrate `ipywidgets-runner` into your existing data analysis.
+
+1. Data analysis typically takes the form of one big function _f_ which maps parameters to an collection of outputs, such as tables, charts, maps, or images.
+The first step is to split this functino _f_ into a collection of smaller, interdependent functions.
+
+2. Express the interdependence of these functions by linking them up in ipywidgets-runner _nodes_.
+
+3. 
+
+
+## Example
+
+
+Just split your data analysis into seprate functions based on the parameters they depend on, link them up to each other, and 
 
 The `ipywidgets` library adds a powerful controls layer to Jupyter notebooks.
 However, for complex visualizations requiring long-running computations dependent on a number of variables, the path to a useable interface lengthens significantly.
@@ -38,3 +59,8 @@ container_widget = w.VBox([first_name_widget, last_name_widget, age_widget, outp
 
 wr.start(container_widget)
 ```
+
+## To do
+- add disk caching
+- compute independent stale nodes in parallel
+- add border to the layout instead of replacing it
