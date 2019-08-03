@@ -1,150 +1,117 @@
 import threading as th
+import ipywidges as w
+import multiprocessing as mp
 
-# The players in tonight's charade
-# - a dag full of nodes which are pending and/or stale
-# - a job runner which manages worker threads that compute stale non-pending nodes
+class Output:
+    """
+    Container class for multi-modal node outputs
+    """
+    def __init__(self, value=None, display=None):
+        self.display = display
+        self.value = value
 
-class DAG:
-	self.stale = set()
-	self.stale_prop = th.Prop()
-
-	self.pending = set()
-	self.pending_lock = th.Lock()
-
-	self.widget_children = {}
-
-	def handle_widget_change(self.change):
-		"""
-		Update the list of stale nodes based on a new value from a widget and 
-		interrupt computations as necessary.
-		"""
-		widget = change.owner
-
-		with self.stale_prop:
-			prev_stale = self.stale
-			curr_stale = set()
-
-			# STEP 1: Update the set of stale nodes
-
-			# First consider the nodes which were already stale and which are not 
-			# children of the changed widget. These nodes are definitely still stale:
-			# they aren't involved in the change.
-			unchanged_stale = prev_stale.difference(self.widget_children[widget])
-
-			# Now we consider the children of widget (some of whom could also be in
-			# prev_stale).
-
-			# There are three sorts of nodes here:
-			# 	1. Nodes going from fresh to stale. We'll call them new_stale, and they
-			#      are exactly children(widget) - prev_stale
-			# 	2. Nodes going from stale to fresh, in the case the only input making
-			# 	   the node stale was the widget's input.
-			# 	3. Node going from stale to stale, in the case some other input is 
-			# 	   making the node stale. We'll call them changed_stale.
-			#
-			# Note that in either of cases (2) or (3) if worker is current working on
-			# computing f for the previous set of inputs it should be halted. Moreover,
-			# together, cases (2) and (3) make up
-			# prev_stale.intersection(children(widget)), which we'll call
-			# changed_prev_stale.
-
-			new_stale = self.widget_children[widget].difference(prev_stale)
-			changed_stale = set()
-
-			changed_prev_stale = prev_stale.difference(self.widget_children[widget])
-
-			for node in changed_prev_stale
-				if node.is_stale(): # still stale--meaning the inputs have changed!
-					changed_stale.add(node)
-				# else node was stale but not stale any longer!
-
-			self.stale = unchanged_stale.union(changed_stale).union(new_stale)
-
-			# STEP 2: Determine what nodes are pending
-			with self.pending_lock:
-				self.pending = all_descendants(stale)
-			# To-do: is there a more efficient way to compute all descendants than
-			# recomputing every time?
-
-			# STEP 3: Interrupt workers who are behind the times
-			should_interrupt = self.pending.union(changed_prev_stale, pending)
-
-			JobRunner.interrupt_on_nodes(should_interrupt)
-
-			# STEP 4: # if there are in fact stale nodes, let it be known to the world!
-			if self.stale:
-				stale_prop.notify()
-
-	def update_node_output(self, node, value):
-		# a stale node is now fresh
-		# for each child, check whether they're stale and not pending and, if so,
-		# add to stale!
-
-		node.update_output(new_value)
-
-		with stale_prop:
-			self.stale.remove(node)
-
-			for child in node.children:
-				child.update_input(parent=node, value=value)
-
-			# we have to do these separately because you can have a child of
-			# a child (I know, I know, quite incestuous)
-
-			for child in node.children:
-				# determine if node is stale
-				if child.is_stale() and not child.is_pending():
-					self.stale.add(child)
-
-
-class JobRunner:
-	"""
-	Manages workers and tracks the subset of stale nodes being worked on at any
-	given point of time.
-	"""
-	def __init__(self):
-		self.working_set = set()
-		self.working_set_lock = th.Lock()
-
-		# TODO: instantiate some number of threads
-
-	def request_node(self):
-		"""
-		Provide a (guaranteed stale) node to compute, otherwise block until there is one. Used by
-		workers.
-		"""
-		with DAG.stale_prop:
-			# block until there's a stale node
-			while not DAG.stale:
-				stale_prop.wait()
-
-			# TODO: verify this is more efficient than sampling
-			# stale - pending - working_set
-			for node in DAG.stale.difference(DAG.pending):
-				if node not in self.working_set:
-					with self.working_set_lock:
-						self.working_set.add(node)
-					return node
-
-	def return_node(self, node, new_value):
-		with self.working_set_lock:
-			self.working_set.remove(node)
-
-		dag.update_node(node, value)
-
-	def interrupt_on_nodes(self, nodes):
-		for node in intersection(nodes, self.working_set.keys()):
-			self.working_set[node].interrupt()
-			with self.working_set_lock:
-				self.working_set.remove(node)
+class Pending:
+	pass
 
 class Node:
-	def __init__(self):
-		self.computed_in = { id(parent) : parent.value for parent in parents }
+	class State(Enum):
+		DONE = 0
+		PENDING = 1
+		READY = 2
+
+	def __init__(self, args=None, f=lambda :None, display=None):
+		for arg in args:
+			if isinstance(arg, Node):
+				# subscribe to traitlet
+			elif isinstance(arg, w.DOMWidget):
+				# subscribe to traitlet
+			else:
+				raise Exception
+
+		self.args = args
+		self.f = f
+		if display:
+            assert isinstance(display, w.widgets.widget_output.Output)
+            # display.layout = w.Layout(border="solid 3px rgba(0,0,0,0)")
+        self.display = display
+		# current inputs given by [arg.value for arg in args]
+		self.old_inputs = [arg.value for arg in args]
+		self.old_value = None
 		self.value = None
+		self.lock = th.Lock()
 
-	def update_input(self, parent, value):
-		pass
+	def handle_parent_update(parent, value):
+		with self.lock:
+			# interrupt computation if it's happening
+			current_inputs = [arg.value for arg in self.args]
+			if Pending not in current_inputs:
+				if current_inputs == self.old_inputs:
+					self.value = self.old_value
+					self.state = Node.State.DONE
+				else:
+					self.value = Pending
+					self.state = Node.State.READY
+			else:
+				self.value = Pending
+				self.state = Node.State.PENDING
 
-	def is_stale(self):
-		
+	def handle_computation(value):
+		if isinstance(value, Output):
+                display = f_return_value.display
+                value = f_return_value.value
+            else:
+                display = f_return_value
+                value = f_return_value
+
+		with self.lock:
+			self.value = value
+			self.state = Node.State.DONE
+
+		if self.display:
+			# self.display.layout = w.Layout(border="solid 3px rgba(0,0,0,0)")
+            self.display.clear_output()
+
+            if isinstance(display, str):
+                self.display.append_stdout(display)
+            else:
+                try:
+                    self.display.append_display_data(display)
+                except Exception as e:
+                    # print("Display exception for that output!", e, flush=True)
+                    self.display.append_stdout(display)
+
+
+class Worker:
+
+	def __init__(ready_nodes=None):
+
+		if not ready_nodes:
+			self.ready_nodes = set()
+		else:
+			self.ready_nodes = ready_nodes
+
+		self.set_condition = th.Condition()
+
+		self.computations = {}
+
+	def run():
+
+		while True:
+
+			with self.set_condition:
+
+				while not ready_nodes:
+
+					self.set_condition.wait()
+
+				ready_node = self.ready_nodes.pop()
+
+				self.singleton_pool = Pool(processes=1)
+	            f_pending_return_value = self.singleton_pool.apply_async(ready_node.f, [arg.value for arg in ready_node.args])
+	            self.singleton_pool.close()
+
+
+
+
+
+
