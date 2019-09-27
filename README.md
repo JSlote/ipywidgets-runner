@@ -1,34 +1,41 @@
 # ipywidgets-runner
 ### Supercharge your ipywidgets dashboards and apps in Jupyter
 
-`ipywidgets-runner` is a framework for writing ipywidget apps that include long-running computations, such as database queries or complicated statistical analyses.
-When a widget value is changes, `ipywidgets-runner` intelligently schedules partial recomputations to greatly speed up tool performance.
+`Ipywidgets` is awesome for creating data viz dashboards in Jupyter.
+But in typical setups the whole dashboard gets recalculated with every change in the configuration: even if you're changing a little parameter in the dashboard, the entire data analysis script runs again, seriously slowing down data exploration fun times.
+`Ipywidgets-runner` fixes that by providing a framework for attaching `ipywidgets` widgets to different stages in your data analysis.
+Then, when a user changes a parameter, `ipywidgets-runner` intelligently re-executes those parts of your data analysis that actually need re-executing.
 
-With `ipywidgets-runner` an analysis is split up into functional components (nodes), each which depend on various widget values.
-When a widget value is update, `ipywidgets-runner` will intelligently recompute only the portion of the analysis that truly depends on that parameter.
+And what's better, if the dashboard has seen that parameter before, it pulls the output from a cache rather than recalculating anything.
+So flip-flopping between two months in your timeseries analysis?
+Instant.
+
+DONE:
+ - [x] DAG-based runtime core
+ - [x] Debug mode
+ - [x] Worker threading
+
+TODO:
+ - [ ] investigate options for building a DAG by static analysis
+ - [ ] disk cache previous computations'
+ - [ ] Worker multiprocessing (optionally)
+ - [ ] config # of worker threads
+ - [ ] option to modify styling of widgets to show stale vs ready outputs
+ - [ ] allow for better diffing than just "=="
+ - [ ] allow for subsetting: (e.g., if the new time range is a subinterval of the old one, maybe you don't need to hit the SQL data store again)
+
+
+## An Example
 
 It's very easy to integrate `ipywidgets-runner` into your existing data analysis.
 
 1. Data analysis typically takes the form of one big function _f_ which maps parameters to an collection of outputs, such as tables, charts, maps, or images.
-The first step is to split this functino _f_ into a collection of smaller, interdependent functions.
+The first step is to split this function _f_ into a collection of smaller, interdependent functions.
 
 2. Express the interdependence of these functions by linking them up in ipywidgets-runner _nodes_.
 
 3. 
 
-
-## Example
-
-
-Just split your data analysis into seprate functions based on the parameters they depend on, link them up to each other, and 
-
-The `ipywidgets` library adds a powerful controls layer to Jupyter notebooks.
-However, for complex visualizations requiring long-running computations dependent on a number of variables, the path to a useable interface lengthens significantly.
-
-In these circumstances, the data scientist wants their computations to be interrupted when a parameter is changed in the configuration interface.
-Furthernore, in an ideal world, only the portions of the computation actually dependent on this variable should be interrupted and recomputed.
-
-This is `ipywidgets-runner` comes in: the data scientist specifies the computation behind a visualization as a directed acyclic graph, and `ipywidgets-runner` automatically interrupts, restarts, and schedules pieces of the computation as necessarily.
 
 ```python
 import ipywidgets as w
@@ -40,17 +47,17 @@ age_widget = w.Date()
 output_widget = w.Output()
 
 full_name_node = wr.Node(
-  in=[first_name_widget, last_name_widget],
+  input=[first_name_widget, last_name_widget],
   f=lambda x, y: x+y
 )
   
 name_and_time_node = wr.Node(
-  in=[full_name_node, age_widget],
+  input=[full_name_node, age_widget],
   f=lambda x, y: x + str(datetime.now()-y)
 )
 
 output_node = wr.OutNode(
-  in=[name_and_time_node],
+  input=[name_and_time_node],
   f=lambda x: plot(x),
   out=output_widget
 )
@@ -59,8 +66,3 @@ container_widget = w.VBox([first_name_widget, last_name_widget, age_widget, outp
 
 wr.start(container_widget)
 ```
-
-## To do
-- add disk caching
-- compute independent stale nodes in parallel
-- add border to the layout instead of replacing it
