@@ -2,31 +2,21 @@
 ### Supercharge your ipywidgets dashboards and apps in Jupyter
 
 `Ipywidgets` is an excellent dashboarding tool for data visualization in Jupyter.
-But in typical setups the whole dashboard gets recalculated with every change in the configuration: even if you're changing a small parameter in the dashboard (such as the date range), the entire data analysis script runs again, seriously slowing down data exploration.
+But in typical setups the whole dashboard gets recalculated with every change in the configuration: even if you're changing a small parameter in the dashboard (such as the date range), the entire data analysis script runs again, greatly slowing down data exploration.
 
-`Ipywidgets-runner` fixes that by providing a framework for attaching `ipywidgets` widgets to different stages in your data analysis.
+`Ipywidgets-runner` alleviates this issue by providing a framework for attaching `ipywidgets` widgets to different stages in your data analysis.
 Then, when a user changes a parameter, `ipywidgets-runner` intelligently re-executes those parts of your data analysis that actually need re-executing.
 
 And what's better, if the dashboard has seen that parameter before, it pulls the output from a cache rather than recalculating anything.
 So flip-flopping between two months in your timeseries analysis?
 Instant.
 
-DONE:
- - [x] DAG-based runtime core
- - [x] Debug mode
- - [x] Worker threading
+## Using `ipywidgets-runner`
 
-TODO:
- - [ ] investigate options for building a DAG by static analysis
- - [ ] disk cache previous computations'
- - [ ] Worker multiprocessing (optionally)
- - [ ] config # of worker threads
- - [ ] option to modify styling of widgets to show stale vs ready outputs
- - [ ] allow for better diffing than just "=="
- - [ ] allow for subsetting: (e.g., if the new time range is a subinterval of the old one, maybe you don't need to hit the SQL data store again)
+`ipywidgets-runner` was designed to be easily integrated into existing Jupyter notebooks.
+You use it by specifying a directed acyclic graph, shown as the middle layer in this diagram:
 
 ![](overview.svg)
-
 
 ## An Example
 
@@ -67,3 +57,19 @@ container_widget = w.VBox([first_name_widget, last_name_widget, age_widget, outp
 
 wr.start(container_widget)
 ```
+
+Complete:
+ - [x] DAG-based runtime core
+ - [x] Debug mode
+ - [x] Worker threading
+
+In progress:
+ - [ ] Styling of widgets to show stale vs fresh outputs
+ - [ ] Worker multiprocessing (optionally)
+ - [ ] Config # of worker threads
+ - [ ] Allow for better diffing than just "=="
+ 
+Future Work and Design Considerations:
+ - [ ] Automatically construct DAG via static analysis
+ - [ ] Disk cache previous computations
+ - [ ] Allow for subsetting: (e.g., if the new time range is a subinterval of the old one, maybe you don't need to hit the SQL data store again)
