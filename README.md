@@ -25,6 +25,8 @@ TODO:
  - [ ] allow for better diffing than just "=="
  - [ ] allow for subsetting: (e.g., if the new time range is a subinterval of the old one, maybe you don't need to hit the SQL data store again)
 
+![](overview.svg)
+
 
 ## An Example
 
