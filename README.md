@@ -1,8 +1,8 @@
 # ipywidgets-runner
 ### Supercharge your ipywidgets dashboards and apps in Jupyter
 
-`Ipywidgets` is an excellent dashboarding tool for data visualization in Jupyter.
-But in typical setups the whole dashboard gets recalculated with every change in the configuration: even if you're changing a small parameter in the dashboard (such as the date range), the entire data analysis script runs again, greatly slowing down data exploration.
+`Ipywidgets` is an excellent and popular (~4M downloads/per month from PyPI) dashboarding tool for data visualization in Jupyter.
+However, in typical setups the whole dashboard gets recalculated with every change in the configuration: even if you're changing a small parameter in the dashboard (such as the date range), the entire data analysis script runs again, greatly slowing down data exploration.
 
 `Ipywidgets-runner` alleviates this issue by providing a framework for attaching `ipywidgets` widgets to different stages in your data analysis.
 Then, when a user changes a parameter, `ipywidgets-runner` intelligently re-executes those parts of your data analysis that actually need re-executing.
