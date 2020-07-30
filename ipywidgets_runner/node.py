@@ -5,7 +5,9 @@ from ipywidgets_runner.utils import dprint, Pending, Output
 from ipywidgets_runner.supervisor import theSupervisor
 
 class Node(tr.HasTraits):
+    """The nodes in the computation DAG"""
     
+    # the output value
     value = tr.Any()
     
     @tr.default("value")
@@ -18,6 +20,12 @@ class Node(tr.HasTraits):
         READY = 2
 
     def __init__(self, args=None, f=lambda: None, display_widget=None):
+        """Instantiate the Node
+        
+        args:           the inputs to f---either widgets or other nodes
+        f:              the data analysis function
+        display_widget: optional, the display widget that outputs a visualization from f
+        """
         dprint("Created Node with ID", id(self))
         for arg in args:
             if isinstance(arg, Node):
@@ -49,7 +57,7 @@ class Node(tr.HasTraits):
         current_inputs = [arg.value for arg in self.args]
 
         # State machine
-        #                    : on node(+ state upd8) : on supervisor
+        #                    : on node(+ state update) : on supervisor
         #
         # ready   -> ready   : do nothing            : cancel and then add
         # ready   -> done    : value <- old_value    : cancel
@@ -92,6 +100,8 @@ class Node(tr.HasTraits):
             # in any case, make sure we're pending                
             self.value = Pending
             self.state = Node.State.PENDING
+            if self.display_widget:
+                self.display_widget.layout = w.Layout(border="black")
 
     def handle_computation_end(self, value):
         """Update new and old values, draw as needed"""
@@ -112,7 +122,6 @@ class Node(tr.HasTraits):
         
         if self.display_widget:
             self.display_widget.clear_output()
-
             if isinstance(display_value, str):
                 self.display_widget.append_stdout(display_value)
             else:

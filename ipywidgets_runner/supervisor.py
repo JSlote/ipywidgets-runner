@@ -4,7 +4,7 @@ import threading as th
 
 class Supervisor:
 
-    def __init__(self):
+    def __init__(self, num_workers=2):
         
         # the "queue" to consume from
         self.ready_nodes = set()
@@ -16,8 +16,9 @@ class Supervisor:
 
         # node ids to workers
         self.work = {}
-        
-        self.start_worker_threads()
+                
+        self.workers = set()
+        self.start_worker_threads(num_workers)
 
 
     def handle_node_to_ready(self, node):
@@ -29,7 +30,8 @@ class Supervisor:
 
     def handle_node_from_ready(self, node):
         """If node is coming from a ready state,
-        there might be a worker on it. Cancel all node-related activity"""
+        there might be a worker on it. Cancel all node-related activity
+        """
 
         dprint("Canceling work...")
         
@@ -50,13 +52,12 @@ class Supervisor:
                     curr_worker.interrupt()
                     del self.work[id(node)]
 
-    def start_worker_threads(self):
-        """Start worker threads which will consume from ready node set"""
-        worker_1 = Worker(self)
-        worker_2 = Worker(self)
-        dprint("Worker 1:", id(worker_1))
-        dprint("Worker 2:", id(worker_2))
-        self.workers = {worker_1, worker_2}
+    def start_worker_threads(self, num_workers):
+        """Start worker threads which will consume from ready node set"""        
+        for i in range(num_workers):
+            worker = Worker(self)
+            dprint("Worker %s:" % i, id(worker))
+            self.workers.add(worker)
         
     def get_work(self, worker):
          with self.ready_nodes_cond:
